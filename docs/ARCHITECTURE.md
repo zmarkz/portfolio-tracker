@@ -1,22 +1,40 @@
 # Portfolio Intelligence Platform — Architecture
 
-> **Last updated**: 2026-04-05 | **Version**: 2.0 | **Author**: Claude Code + Markandey Singh
+> **Last updated**: 2026-04-06 | **Version**: 4.0 | **Author**: Claude Code + Markandey Singh
 
 ---
 
 ## 1. System Overview
 
-A multi-application, multi-language distributed platform for Indian equity portfolio management with AI-powered analysis, tax computation, real-time broker integration, and a shared AI orchestration layer.
+An AI-first personal finance advisor for Indian retail investors. Multi-broker, multi-application platform with portfolio management across 7 Indian brokers, XIRR performance analytics, goal-based planning, tax optimization (FIFO + harvesting), net worth tracking, CDSL/NSDL CAS parsing, daily AI briefings, and document upload (Form 16, 26AS, AIS) — all orchestrated through Agent Farm.
 
 | Metric | Value |
 |--------|-------|
 | Applications | 5 (2 SPAs, 1 API, 1 Gateway, 1 Orchestrator) |
+| MySQL Tables | 25+ (business data) |
+| PostgreSQL Tables | 7 (MCP infrastructure) |
 | MCP Servers | 4 (portfolio, web-search, aws, atlassian) |
-| MCP Tools | 15 registered |
+| MCP Tools | 17 registered |
 | Agent Templates | 6 |
+| Supported Brokers | 7 (Zerodha, Upstox, Angel One, 5paisa, ICICI Direct, Groww, Paytm Money) |
+| Data Import | CDSL CAS, NSDL CAS, MFCentral, Broker CSV, Form 16, 26AS, AIS |
 | Languages | Java 23, TypeScript 5.9 |
 | Databases | MySQL 8 (business), PostgreSQL 15 (infra), Redis 7 (queue) |
-| API Endpoints | 30+ REST, 1 WebSocket, 2 MCP protocol |
+| API Endpoints | 75+ REST + 1 WebSocket + 2 MCP protocol |
+| Frontend Pages | 13 (+ login) |
+| Scheduled Jobs | 3 (performance 4:30PM, tax harvest Sat 9AM, briefing 6AM) |
+
+### Test User
+
+| Field | Value |
+|-------|-------|
+| Name | Rahul Sharma |
+| Email | `testuser@portfolio.ai` |
+| Password | `Test@123` |
+| Portfolios | 2 (Long Term Wealth: 10 stocks, Smallcap Bets: 3 stocks) |
+| Net Worth | ~₹30.4L (equity + MF + FD + PPF + Gold + Savings) |
+| Risk Profile | MODERATE (7/10) |
+| Test Guide | See `docs/TEST_CASES.md` |
 
 ---
 
@@ -289,18 +307,25 @@ Agent Farm          MCP Gateway           Client Pool          MCP Server       
 
 ## 8. Database Schema
 
-### MySQL — `portfolio` (12 tables)
+### MySQL — `portfolio` (23 tables)
 
 ```
 users ─────────┬─── portfolios ──────┬─── portfolio_holdings ──── stocks
   │             │                     │
   │             │                     └─── transactions
   │             │
-  ├─── income_entries (NEW)          ┌─── stock_price_history
-  ├─── tradebook_entries (NEW)       │
-  ├─── analysis_history (NEW)        stocks ────┘
-  ├─── chat_history (NEW)
-  ├─── approval_requests (NEW)
+  ├─── user_preferences (1:1)        ┌─── stock_price_history
+  ├─── income_entries                 │
+  ├─── tradebook_entries              stocks ────┘
+  ├─── analysis_history
+  ├─── chat_history                   financial_goals ──── goal_allocations
+  ├─── approval_requests
+  ├─── financial_goals                net_worth_assets
+  ├─── net_worth_assets               mutual_fund_holdings
+  ├─── mutual_fund_holdings           performance_snapshots
+  ├─── notifications                  tax_harvest_opportunities
+  ├─── daily_briefings                daily_briefings
+  ├─── watchlists ──── watchlist_items
   └─── alerts
 ```
 
@@ -463,11 +488,16 @@ users ─────────┬─── portfolios ──────┬�
 | `/login` | Login/Register | Email + password auth |
 | `/dashboard` | Dashboard | Holdings table, metrics bar, sector chart, CSV import, Kite sync |
 | `/holdings` | Holdings | Stock list, click through to analysis |
+| `/performance` | **Performance** | XIRR cards, portfolio vs benchmark chart, period selector |
 | `/stocks/:symbol` | Stock Analysis | Price, SMA50/200, RSI, MACD, AI insights |
 | `/transactions` | Transactions | Buy/sell execution, history |
 | `/ai` | AI Assessment | Chat (SSE), Analysis (JSON), Rebalance, History, Transparency |
+| `/goals` | **Goals** | Goal cards, progress bars, SIP calculator, 3-scenario projections |
+| `/networth` | **Net Worth** | Multi-asset total, donut chart, asset CRUD, liquidity breakdown |
+| `/watchlist` | **Watchlist** | Stocks with target prices, alerts, live price comparison |
 | `/tax` | Tax Dashboard | FY selector, LTCG/STCG cards, capital gains table, income breakdown |
 | `/income` | Income & Trades | Income CRUD (7 types), Tradebook CSV upload, tabbed UI |
+| `/settings` | **Settings** | Risk questionnaire (10-step), preferences, notification toggles |
 
 ---
 
