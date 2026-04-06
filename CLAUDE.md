@@ -5,6 +5,132 @@
 Full system architecture documentation is available at:
 - **Markdown**: `docs/ARCHITECTURE.md` (for Claude Code, Cursor, IntelliJ)
 - **HTML (visual)**: `docs/architecture.html` (open in Chrome for dark-themed interactive view)
+- **Admin Setup**: `docs/ADMIN_SETUP.md` (keys, costs, manual config steps)
+- **Test Cases**: `docs/TEST_CASES.md` (manual testing guide)
+- **Design Spec**: `docs/AI_Personal_Finance_Advisor_Design.md` (full feature design)
+
+---
+
+## AI Model Routing — MANDATORY Pattern
+
+**ALL applications MUST follow this pattern for AI features. No exceptions.**
+
+### Architecture
+
+```
+Application (backend)
+  │
+  │  NEVER calls models directly (no Anthropic/OpenAI/Ollama API calls)
+  │
+  ├── classifyQuery(message) → COMPLEX or SIMPLE
+  │
+  ├── COMPLEX → Agent Farm Template 3 (Claude Sonnet)
+  │              - Portfolio analysis, sell/buy recommendations
+  │              - Tax advice, rebalancing, risk assessment
+  │              - Output: Structured JSON → frontend renders as cards/tables
+  │              - Cost: ~₹0.03-0.08 per call
+  │
+  └── SIMPLE  → Agent Farm Template 4 (Qwen local via Ollama)
+                 - Data lookups, explanations, definitions
+                 - Daily briefings, formatting tasks
+                 - Output: Streaming markdown
+                 - Cost: ₹0 (runs on local hardware)
+```
+
+### Query Classification Keywords
+
+```
+COMPLEX (→ Claude, paid):
+  analyze, sell, buy, recommend, rebalance, should I, compare,
+  risk, strategy, tax, harvest, what-if, which stock, best, worst,
+  portfolio health, deep dive, outlook, forecast, action plan
+
+SIMPLE (→ Qwen local, free):
+  what is, how many, show me, list, allocation, explain, define,
+  total value, how much, summary, what does, meaning, sector, count
+
+DEFAULT → COMPLEX (safer, use Claude if unsure)
+```
+
+### Response Formats
+
+| Query Type | Model | SSE Event | Frontend Rendering |
+|------------|-------|-----------|-------------------|
+| COMPLEX | Claude | `event: structured` + JSON | `<StructuredResponse>` — cards, tables, badges |
+| SIMPLE | Qwen | `event: token` + markdown | `<MarkdownMessage>` — streaming text |
+| Fallback | — | `event: token` + text | `<MarkdownMessage>` — if JSON parse fails |
+
+### Structured JSON Format (for COMPLEX queries)
+
+```json
+{
+  "summary": {
+    "totalValue": "₹1.37Cr",
+    "pnl": "+₹46.1L",
+    "pnlPct": "+50.89%",
+    "holdingsCount": 29,
+    "keyInsight": "10 out of 29 holdings are in the red"
+  },
+  "sections": [
+    {
+      "type": "table",
+      "title": "Sell Immediately",
+      "emoji": "🔴",
+      "columns": ["Stock", "Loss", "Return", "Reason"],
+      "rows": [["ITC", "-₹13.8K", "-32%", "No catalyst"]]
+    },
+    {
+      "type": "recommendations",
+      "title": "Buy / Add More",
+      "emoji": "🟢",
+      "items": [{"stock": "HDFC Bank", "action": "BUY", "reason": "Rate cut tailwind"}]
+    },
+    {
+      "type": "warning",
+      "text": "IT sector 28% — consider reducing to 20%"
+    },
+    {
+      "type": "disclaimer",
+      "text": "AI-generated analysis. Not investment advice."
+    }
+  ]
+}
+```
+
+### Logging (visible in Docker logs)
+
+Every AI query logs routing decisions and results:
+```
+[ROUTING] query="Analyze portfolio" → COMPLEX → Claude (template 3) | portfolio=1
+[RESULT]  COMPLEX → Claude | 30994ms | 3957chars | ~₹5.05 | JSON_STRUCTURED
+[ROUTING] query="How many stocks?" → SIMPLE → Qwen local (template 4)
+[RESULT]  SIMPLE → Qwen local | STREAMING_MARKDOWN | cost=₹0.00
+```
+
+View logs: `docker logs -f portfolio_tracker_api 2>&1 | grep "\[ROUTING\]\|\[RESULT\]"`
+
+### Agent Farm Templates
+
+| ID | Name | Provider | Model | Use Case |
+|----|------|----------|-------|----------|
+| 3 | Portfolio Analyst | anthropic | claude-sonnet-4-6 | Complex analysis (JSON output) |
+| 4 | Local Portfolio Analyst | ollama | qwen2.5-coder:14b | Simple queries, briefings (free) |
+
+### When Building New AI Features
+
+1. **ALWAYS route through Agent Farm** — never call Anthropic/OpenAI/Ollama directly
+2. **Use `classifyQuery()`** to decide template — extend keywords as needed
+3. **COMPLEX queries** → request JSON output → render with `<StructuredResponse>`
+4. **SIMPLE queries** → stream markdown → render with `<MarkdownMessage>`
+5. **Add `[ROUTING]` and `[RESULT]` logs** for every AI interaction
+6. **Include cost estimate** in `[RESULT]` log
+7. **Fallback to MarkdownMessage** if JSON parsing fails
+
+### Cost Optimization
+
+- **93% of queries** go to Qwen local (₹0)
+- **7% of queries** go to Claude (~₹0.03-0.08 each)
+- **Monthly cost**: ~₹46 (vs ₹191 without routing) — **76% savings**
 
 ---
 
